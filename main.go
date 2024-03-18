@@ -3,47 +3,54 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"flag"
 	"fmt"
 	"os"
 	"time"
 )
 
 func main() {
-	hostname := flag.String("hostname", "", "Hostname to connect to")
-	port := flag.String("port", "443", "Port to connect to (default 443)")
-	flag.Parse()
-
-	// Validate that the hostname argument is provided
-	if *hostname == "" {
-		fmt.Println("Error: hostname is required")
-		flag.Usage()
+	// Check if the required command-line arguments are provided
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: go run main.go <hostname> <port>")
 		os.Exit(1)
 	}
 
+	hostname := os.Args[1]
+	port := os.Args[2]
+
 	// Connect to the remote host
-	conn, err := tls.Dial("tcp", *hostname+":"+*port, nil)
+	conn, err := tls.Dial("tcp", hostname+":"+port, &tls.Config{
+		InsecureSkipVerify: false, // Set to true to skip certificate validation
+	})
 	if err != nil {
-		fmt.Println("Error connecting to host:", err)
+		fmt.Printf("Error connecting to %s:%s: %v\n", hostname, port, err)
 		os.Exit(1)
 	}
 	defer conn.Close()
 
-	// Verify certificates
+	// Get the server's certificate chain
 	certs := conn.ConnectionState().PeerCertificates
+
+	// Validate the certificate chain
 	opts := x509.VerifyOptions{
-		CurrentTime: time.Now(),
+		Roots: x509.NewCertPool(),
 	}
+
+	for _, cert := range certs[1:] {
+		opts.Roots.AddCert(cert)
+	}
+
 	_, err = certs[0].Verify(opts)
 	if err != nil {
-		fmt.Println("Certificate verification error:", err)
+		fmt.Printf("Error validating certificate chain: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Calculate expiration and days left
-	// Ensure we drop all remaining hours and just displays the days
+	// Get the expiration date of the server's certificate
 	expirationDate := certs[0].NotAfter
+
+	// Calculate the number of days until the certificate expires
 	daysLeft := int(time.Until(expirationDate).Truncate(24*time.Hour).Hours() / 24)
 
-	fmt.Println("Days until certificate expiration:", daysLeft)
+	fmt.Printf("Days left until the certificate expires: %d\n", daysLeft)
 }

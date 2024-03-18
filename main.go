@@ -4,19 +4,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
 func main() {
-	// Check if the required command-line arguments are provided
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: go run main.go <hostname> <port>")
-		os.Exit(1)
-	}
-
-	hostname := os.Args[1]
-	port := os.Args[2]
+	// Get the hostname and port from the command-line arguments
+	hostname, port := parseHostnameAndPort(os.Args[1:])
 
 	// Connect to the remote host
 	conn, err := tls.Dial("tcp", hostname+":"+port, &tls.Config{
@@ -48,9 +44,41 @@ func main() {
 
 	// Get the expiration date of the server's certificate
 	expirationDate := certs[0].NotAfter
-
+	fmt.Printf("Certificate subject: %s\nCommon Name (CN): %s\n", certs[0].Subject, certs[0].Subject.CommonName)
+	fmt.Println("Certificate expiration date:", expirationDate)
 	// Calculate the number of days until the certificate expires
 	daysLeft := int(time.Until(expirationDate).Truncate(24*time.Hour).Hours() / 24)
 
 	fmt.Printf("Days left until the certificate expires: %d\n", daysLeft)
+}
+
+func parseHostnameAndPort(args []string) (string, string) {
+	var hostname, port string
+
+	if len(args) == 0 {
+		fmt.Println("Usage: go run main.go <hostname> [port]")
+		os.Exit(1)
+	}
+
+	if strings.HasPrefix(args[0], "https://") {
+		u, err := url.Parse(args[0])
+		if err != nil {
+			fmt.Printf("Error parsing hostname: %v\n", err)
+			os.Exit(1)
+		}
+		hostname = u.Hostname()
+		port = u.Port()
+	} else {
+		hostname = args[0]
+	}
+
+	if len(args) > 1 {
+		port = args[1]
+	}
+
+	if port == "" {
+		port = "443" // Default to port 443 if not provided
+	}
+
+	return hostname, port
 }

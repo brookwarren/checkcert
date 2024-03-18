@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -11,12 +12,16 @@ import (
 )
 
 func main() {
+	// Parse command-line flags
+	debugFlag := flag.Bool("debug", false, "Print debug information")
+	flag.Parse()
+
 	// Get the hostname and port from the command-line arguments
-	hostname, port := parseHostnameAndPort(os.Args[1:])
+	hostname, port := parseHostnameAndPort(flag.Args())
 
 	// Connect to the remote host
 	conn, err := tls.Dial("tcp", hostname+":"+port, &tls.Config{
-		InsecureSkipVerify: false, // Set to true to skip certificate validation
+		InsecureSkipVerify: false,
 	})
 	if err != nil {
 		fmt.Printf("Error connecting to %s:%s: %v\n", hostname, port, err)
@@ -44,8 +49,13 @@ func main() {
 
 	// Get the expiration date of the server's certificate
 	expirationDate := certs[0].NotAfter
-	fmt.Printf("Certificate subject: %s\nCommon Name (CN): %s\n", certs[0].Subject, certs[0].Subject.CommonName)
-	fmt.Println("Certificate expiration date:", expirationDate)
+
+	// Print debug information if --debug flag is set
+	if *debugFlag {
+		fmt.Println("Certificate expiration date:", expirationDate)
+		fmt.Printf("Certificate subject: %s\nCommon Name (CN): %s\n", certs[0].Subject, certs[0].Subject.CommonName)
+	}
+
 	// Calculate the number of days until the certificate expires
 	daysLeft := int(time.Until(expirationDate).Truncate(24*time.Hour).Hours() / 24)
 
@@ -56,7 +66,7 @@ func parseHostnameAndPort(args []string) (string, string) {
 	var hostname, port string
 
 	if len(args) == 0 {
-		fmt.Println("Usage: go run main.go <hostname> [port]")
+		fmt.Println("Usage: go run main.go <hostname> [port] [--debug]")
 		os.Exit(1)
 	}
 

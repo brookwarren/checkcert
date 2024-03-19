@@ -5,27 +5,42 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
 func main() {
-	// Process arguments
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go <hostname> [<port>] [--debug]")
-		os.Exit(1)
-	}
-
-	hostname := os.Args[1]
-	port := "443" // Default port
+	var hostname string
+	port := "443"
 	debugFlag := false
 
-	if len(os.Args) >= 3 {
+	if len(os.Args) > 1 {
+		hostname = os.Args[1]
+	}
+
+	// Process argumentsswitch
+	switch len(os.Args) {
+	case 1: // this means NO args were provided
+		fmt.Println("Usage: checkcert <hostname> [<port>] [--debug]")
+		fmt.Println("- Defaults to 443 if port not specified.")
+		fmt.Println("- The --debug option will print the CN, SANs, and the Expiration date.")
+		os.Exit(0)
+	case 2:
+	case 3: // this means 2 args were provided
 		if os.Args[2] == "--debug" {
 			debugFlag = true
 		} else {
-			port = os.Args[2] // Assume it's the port if not "--debug"
+			port = os.Args[2]
+		}
+	default:
+		port = os.Args[2]
+		if os.Args[3] == "--debug" {
+			debugFlag = true
 		}
 	}
+
+	// trim https:// if it is there
+	hostname = strings.TrimPrefix(hostname, "http://")
 
 	// Connect to the remote host
 	conn, err := tls.Dial("tcp", hostname+":"+port, &tls.Config{
@@ -62,10 +77,23 @@ func main() {
 	if debugFlag {
 		fmt.Println("Certificate expiration date:", expirationDate)
 		fmt.Printf("Certificate subject: %s\nCommon Name (CN): %s\n", certs[0].Subject, certs[0].Subject.CommonName)
+		// Print Subject Alternative Names
+		fmt.Println("Subject Alternative Names (SANs):")
+		if len(certs[0].DNSNames) == 0 {
+			fmt.Println("   None")
+		} else {
+			for _, san := range certs[0].DNSNames {
+				fmt.Println("   ", san)
+			}
+		}
 	}
 
 	// Calculate the number of days until the certificate expires
 	daysLeft := int(time.Until(expirationDate).Truncate(24*time.Hour).Hours() / 24)
 
-	fmt.Printf("Days left until the certificate expires: %d\n", daysLeft)
+	if debugFlag {
+		fmt.Printf("Days left until the certificate expires: %d\n", daysLeft)
+	} else {
+		fmt.Printf("%d", daysLeft)
+	}
 }

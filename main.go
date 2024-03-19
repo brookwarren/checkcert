@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -14,33 +15,68 @@ func main() {
 	port := "443"
 	debugFlag := false
 
-	if len(os.Args) > 1 {
-		hostname = os.Args[1]
-	}
-
-	// Process argumentsswitch
+	// Process arguments
 	switch len(os.Args) {
 	case 1: // this means NO args were provided
-		fmt.Println("Usage: checkcert <hostname> [<port>] [--debug]")
+		fmt.Println("Usage: checkcert <hostname|url> [<port>] [--debug]")
 		fmt.Println("- Defaults to 443 if port not specified.")
 		fmt.Println("- The --debug option will print the CN, SANs, and the Expiration date.")
 		os.Exit(0)
 	case 2:
+		// Check if the argument is a URL
+		if strings.HasPrefix(os.Args[1], "https://") {
+			parsedURL, err := url.Parse(os.Args[1])
+			if err != nil {
+				fmt.Printf("Error parsing URL: %v\n", err)
+				os.Exit(1)
+			}
+			hostname = parsedURL.Hostname()
+			if parsedURL.Port() != "" {
+				port = parsedURL.Port()
+			}
+		} else {
+			hostname = os.Args[1]
+		}
 	case 3: // this means 2 args were provided
+		// Check if the first argument is a URL
+		if strings.HasPrefix(os.Args[1], "https://") {
+			parsedURL, err := url.Parse(os.Args[1])
+			if err != nil {
+				fmt.Printf("Error parsing URL: %v\n", err)
+				os.Exit(1)
+			}
+			hostname = parsedURL.Hostname()
+			if parsedURL.Port() != "" {
+				port = parsedURL.Port()
+			}
+		} else {
+			hostname = os.Args[1]
+		}
 		if os.Args[2] == "--debug" {
 			debugFlag = true
 		} else {
 			port = os.Args[2]
 		}
 	default:
-		port = os.Args[2]
+		// Check if the first argument is a URL
+		if strings.HasPrefix(os.Args[1], "https://") {
+			parsedURL, err := url.Parse(os.Args[1])
+			if err != nil {
+				fmt.Printf("Error parsing URL: %v\n", err)
+				os.Exit(1)
+			}
+			hostname = parsedURL.Hostname()
+			if parsedURL.Port() != "" {
+				port = parsedURL.Port()
+			}
+		} else {
+			hostname = os.Args[1]
+			port = os.Args[2]
+		}
 		if os.Args[3] == "--debug" {
 			debugFlag = true
 		}
 	}
-
-	// trim https:// if it is there
-	hostname = strings.TrimPrefix(hostname, "http://")
 
 	// Connect to the remote host
 	conn, err := tls.Dial("tcp", hostname+":"+port, &tls.Config{
@@ -59,11 +95,9 @@ func main() {
 	opts := x509.VerifyOptions{
 		Roots: x509.NewCertPool(),
 	}
-
 	for _, cert := range certs[1:] {
 		opts.Roots.AddCert(cert)
 	}
-
 	_, err = certs[0].Verify(opts)
 	if err != nil {
 		fmt.Printf("Error validating certificate chain: %v\n", err)
@@ -80,17 +114,16 @@ func main() {
 		// Print Subject Alternative Names
 		fmt.Println("Subject Alternative Names (SANs):")
 		if len(certs[0].DNSNames) == 0 {
-			fmt.Println("   None")
+			fmt.Println(" None")
 		} else {
 			for _, san := range certs[0].DNSNames {
-				fmt.Println("   ", san)
+				fmt.Println(" ", san)
 			}
 		}
 	}
 
 	// Calculate the number of days until the certificate expires
 	daysLeft := int(time.Until(expirationDate).Truncate(24*time.Hour).Hours() / 24)
-
 	if debugFlag {
 		fmt.Printf("Days left until the certificate expires: %d\n", daysLeft)
 	} else {
